@@ -9,6 +9,7 @@ import com.sporton.SportOn.model.CommonResponseModel;
 import com.sporton.SportOn.model.venueModel.*;
 import com.sporton.SportOn.service.bookingService.BookingService;
 import com.sporton.SportOn.service.timeSlotService.TimeSlotService;
+import com.sporton.SportOn.service.venueService.VenueRevenueResult;
 import com.sporton.SportOn.service.venueService.VenueService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -293,5 +294,11 @@ public class VenueController {
 
     }
 
+    @GetMapping("/highest-revenue")
+    public ResponseEntity<VenueRevenueResult> getHighestRevenueVenue(@RequestParam String startDate,
+                                                                     @RequestParam String endDate) throws CommonException {
+        VenueRevenueResult venueRevenueResult = bookingService.getVenueWithHighestRevenue(startDate, endDate);
+        return ResponseEntity.ok(venueRevenueResult);
+    }
 
 }

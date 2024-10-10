@@ -12,18 +12,20 @@ import com.sporton.SportOn.entity.token.TokenType;
 import com.sporton.SportOn.exception.authenticationException.AuthenticationException;
 import com.sporton.SportOn.model.CommonResponseModel;
 import com.sporton.SportOn.model.authenticationModel.*;
-import com.sporton.SportOn.model.bookingModel.ProviderOrderResponseDTO;
 import com.sporton.SportOn.repository.AppUserRepository;
 import com.sporton.SportOn.repository.RegionRepository;
 import com.sporton.SportOn.repository.SubscriptionRepository;
 import com.sporton.SportOn.repository.TokenRepository;
 import com.sporton.SportOn.service.aswS3Service.AWSS3Service;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -58,15 +60,21 @@ public class AuthenticationServiceImpl implements AuthenticateService {
     private final AWSS3Service awss3Service;
     private final SubscriptionRepository subscriptionRepository;
     private final RegionRepository regionRepository;
+    private final JavaMailSender javaEmailSender;
 
     @Autowired
     private JavaMailSender emailSender;
     LocalDateTime generatedTime=LocalDateTime.now();
     private AppUser user;
+    private AppUser providerUser;
+    private String providerPassword;
+
     GeneratedOTP generatedOTP = new GeneratedOTP();
+    GeneratedOTP generatedOTPForProvider = new GeneratedOTP();
+
     private String currentOTP;
     private static final int OTP_LENGTH = 6;
-    private static final int EXPIRATION_TIME_IN_MINUTES = 1;
+    private static final int EXPIRATION_TIME_IN_MINUTES = 3;
     @Override
     public OTPResponseModel signUpUser(SignUpRequestModel body) throws AuthenticationException {
 
@@ -816,6 +824,105 @@ public class AuthenticationServiceImpl implements AuthenticateService {
         }
     }
 
+    @Override
+    public OTPResponseModel providerSignUp(ProviderSignUpRequestModal body) throws AuthenticationException {
+        if(body.getFullName() == null){
+            throw new AuthenticationException("Full name is required");
+        }
+        if(body.getPhoneNumber() == null){
+            throw new AuthenticationException("Phone number is required");
+        }
+        if(body.getPassword() == null){
+            throw new AuthenticationException("Password is required");
+        }
+        if(body.getDateOfBirth() == null){
+            throw new AuthenticationException("DOB is required");
+        }
+        if(body.getCity() == null){
+            throw new AuthenticationException("City is required");
+        }
+        if(body.getRegionId() == null){
+            throw new AuthenticationException("Region is required");
+        }
+        if(body.getGender() == null){
+            throw new AuthenticationException("Gender is required");
+        }
+        Optional<Region> optionalRegion = Optional.ofNullable(regionRepository.findById(body.getRegionId())
+                .orElseThrow(() -> new AuthenticationException("Region not found with ID: " + body.getRegionId())));
+
+        Optional<AppUser> checkIfUserExistsByPhoneNumber = appUserRepository.findByPhoneNumber(body.getPhoneNumber());
+        Optional<AppUser> checkIfUserExistsByEmail = appUserRepository.findByEmail(body.getEmail());
+
+        if(checkIfUserExistsByPhoneNumber.isPresent()){
+            throw new AuthenticationException("This User with number '"+ body.getPhoneNumber()+ "' already exists");
+        }
+        if(checkIfUserExistsByEmail.isPresent()){
+            throw new AuthenticationException("This User with email '"+ body.getEmail()+ "' already exists");
+        }
+
+        try {
+//            if(SportOnApplication.getAccessToken() == null || SportOnApplication.getAccessToken().equalsIgnoreCase("")){
+//                System.out.println(SportOnApplication.getAccessToken());
+//                throw new AuthenticationException("Access token is not provide for SMS");
+//            }else{
+                log.info("user body {}", body);
+//            sendOTP(body.getPhoneNumber());
+                providerPassword = body.getPassword();
+                sendEmailVerificationForProvider(body.getEmail());
+                providerUser = AppUser.builder()
+                        .fullName(body.getFullName())
+                        .email(body.getEmail())
+                        .phoneNumber(body.getPhoneNumber())
+                        .dateOfBirth(body.getDateOfBirth())
+                        .region(optionalRegion.get())
+                        .city(body.getCity())
+                        .membershipType(MembershipType.REGULAR)
+                        .password(passwordEncoder.encode(body.getPassword()))
+                        .joinedDate(getCurrentDate())
+                        .role(Role.PROVIDER)
+                        .approved(false)
+                        .gender(body.getGender())
+                        .build();
+                return OTPResponseModel.builder()
+                        .message("OTP is sent, verify")
+                        .build();
+//            }
+
+        }catch (Exception e){
+            System.out.println(e.getMessage());
+            throw new AuthenticationException(e.getMessage());
+        }
+    }
+
+    @Override
+    public ProviderSignUpResponseModal verifyOTPForProviderSignUp(OTP otp) throws AuthenticationException {
+        if (otp == null){
+            throw new AuthenticationException("Enter the otp sent to your phone number.");
+        }
+        if (isOtpValid(otp.getOtp(), generatedTime)) {
+            if(otp.getOtp().equalsIgnoreCase(generatedOTPForProvider.getGeneratedOTP())){
+                appUserRepository.save(providerUser);
+                String token = jwtService.generateToken(providerUser);
+                String refreshToken = jwtService.generateRefreshToken(providerUser);
+                saveUserToken(providerUser, token);
+                sendEmailForProviderForCredentialSharing(providerUser);
+
+                ProviderSignUpResponseModal signUpResponseModel = ProviderSignUpResponseModal.builder()
+                        .status(HttpStatus.CREATED)
+                        .message("Provider User is created successfully"+
+                                "We have sent an email to you, inside the email is your credentials to your account as a provider.")
+                        .build();
+                return signUpResponseModel;
+            }
+            else {
+                throw new AuthenticationException("OTP is invalid");
+            }
+        } else {
+            System.out.println("OTP is invalid");
+            throw new AuthenticationException("OTP is invalid");
+        }
+    }
+
 //    private UserSubscriptionDTO mapToUserSubscriptionDTO(Subscription subscription) {
 //        String userName = getUserNameById(subscription.getUserId()); // Assume a method to fetch user name
 //        String phoneNumber = getUserPhoneNumberById(subscription.getUserId()); // Assume a method to fetch phone number
@@ -884,7 +991,7 @@ public class AuthenticationServiceImpl implements AuthenticateService {
             generatedTime=LocalDateTime.now();
             SimpleMailMessage message = new SimpleMailMessage();
             message.setTo(to);
-            message.setSubject("Blue Sky");
+            message.setSubject("Verify OTP For Account Verification");
             message.setText("OTP : " + generatedOTP.getGeneratedOTP());
             emailSender.send(message);
         }catch (Exception e){
@@ -892,6 +999,83 @@ public class AuthenticationServiceImpl implements AuthenticateService {
             throw new AuthenticationException(e.getMessage());
         }
         }
+    public void sendEmailVerificationForProvider(String to) throws AuthenticationException {
+        try {
+            generatedOTPForProvider.setGeneratedOTP(generateOTP());
+            generatedTime=LocalDateTime.now();
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(to);
+            message.setSubject("Verify OTP For Provider Account Verification");
+            message.setText("OTP : " + generatedOTPForProvider.getGeneratedOTP());
+            emailSender.send(message);
+        }catch (Exception e){
+            log.info(e.getMessage());
+            throw new AuthenticationException(e.getMessage());
+        }
+    }
+
+
+    public void sendEmailForProviderForCredentialSharing(AppUser providerUser) throws AuthenticationException {
+        try {
+            MimeMessage mimeMessage = javaEmailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
+
+            String htmlContent = "<!DOCTYPE html>"
+                    + "<html>"
+                    + "<head>"
+                    + "<meta charset='UTF-8'>"
+                    + "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
+                    + "<style>"
+                    + "body {font-family: Arial, sans-serif; background-color: #f4f4f4;}"
+                    + ".email-container {background-color: #ffffff; max-width: 600px; margin: 20px auto; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);}"
+                    + ".header {background-color: #4CAF50; color: #ffffff; text-align: center; padding: 10px 0; border-radius: 10px 10px 0 0;}"
+                    + ".header h1 {margin: 0; font-size: 24px;}"
+                    + ".content {padding: 20px; font-size: 16px; line-height: 1.6;}"
+                    + ".content h2 {color: #333333;}"
+                    + ".button-container {text-align: center; margin-top: 20px;}"
+                    + ".button {background-color: #4CAF50; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-size: 16px;}"
+                    + ".footer {text-align: center; color: #888888; margin-top: 20px;}"
+                    + "</style>"
+                    + "</head>"
+                    + "<body>"
+                    + "<div class='email-container'>"
+                    + "<div class='header'>"
+                    + "<h1>Welcome to Our Service</h1>"
+                    + "</div>"
+                    + "<div class='content'>"
+                    + "<h2>Credentials</h2>"
+                    + "<p>Hi " + providerUser.getFullName() + ",</p>"
+                    + "<p>We are excited to have you on board. Below are your login credentials:</p>"
+                    + "<ul>"
+                    + "<li><strong>Phone Number:</strong> " + providerUser.getPhoneNumber() + "</li>"
+                    + "<li><strong>Password:</strong> " + providerPassword + "</li>"
+                    + "</ul>"
+//                    + "<p>Please use the above information to log into your account. We recommend you change your password after logging in for the first time.</p>"
+//                    + "<div class='button-container'>"
+//                    + "<a href='#' class='button'>Log In Now</a>"
+//                    + "</div>"
+                    + "<p>If you need any assistance, feel free to contact our support team using our website contact form.</p>"
+                    + "</div>"
+                    + "<div class='footer'>"
+                    + "<p>&copy; 2024 SportOn. All rights reserved.</p>"
+                    + "</div>"
+                    + "</div>"
+                    + "</body>"
+                    + "</html>";
+
+            helper.setText(htmlContent, true); // Set 'true' for HTML content
+            helper.setTo(providerUser.getEmail());
+            helper.setSubject("Your Account Credentials");
+
+            emailSender.send(mimeMessage);
+
+        } catch (MessagingException e) {
+            log.error("Error while sending email", e);
+            throw new AuthenticationException("Failed to send email.");
+        }
+    }
+
+
 
     private String generateOTP(){
         Random random = new Random();

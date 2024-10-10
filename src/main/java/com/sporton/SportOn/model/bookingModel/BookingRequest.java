@@ -8,6 +8,7 @@ import lombok.*;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.List;
 
 @Data
 @Builder
@@ -33,4 +34,6 @@ public class BookingRequest {
     @Enumerated(EnumType.STRING)
     private BookingType bookingType; // NEW ENUM: ONE_TIME, WEEKLY, MONTHLY
     private boolean isRecurring;
+    private List<DayOfWeek> recurrenceDays; // For multiple days selection
+
 }

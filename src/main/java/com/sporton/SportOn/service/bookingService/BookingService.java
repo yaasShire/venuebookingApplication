@@ -8,14 +8,18 @@ import com.sporton.SportOn.model.bookingModel.BookedVenueResponseDTO;
 import com.sporton.SportOn.model.bookingModel.BookingRequest;
 import com.sporton.SportOn.model.bookingModel.MatchesRequestModel;
 import com.sporton.SportOn.model.bookingModel.ProviderOrderResponseDTO;
+import com.sporton.SportOn.service.venueService.VenueRevenueResult;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 public interface BookingService {
     CommonResponseModel bookCourt(BookingRequest body, String phoneNumber) throws CommonException;
 
-    List<BookedVenueResponseDTO> getBookingsByUserId(String phoneNumber , Integer page, Integer size) throws CommonException;
+    Map<String, Object> getBookingsByUserId(String phoneNumber , Integer page, Integer size) throws CommonException;
+
+    List<Object> getBookingByCustomerId(String phoneNumber, Integer page, Integer size) throws CommonException;
 
     CommonResponseModel updateBooking(Long bookingId, BookingRequest body) throws CommonException;
 
@@ -25,7 +29,6 @@ public interface BookingService {
 
     List<ProviderOrderResponseDTO> getBookingsByProviderId(String phoneNumber , Integer page, Integer size) throws CommonException;
 
-    List<Booking> getBookingByCustomerId(String phoneNumber, Integer page, Integer size) throws CommonException;
 
     CommonResponseModel getNumberOfNewOrders(String phoneNumber, Integer page, Integer size) throws CommonException;
 
@@ -61,4 +64,11 @@ public interface BookingService {
     CommonResponseModel getTotalRevenue(Long venueId, LocalDate start, LocalDate end) throws VenueException;
 
     void createOneTimeBooking(Booking booking);
+
+
+    VenueRevenueResult getVenueWithHighestRevenue(String startDate, String endDate) throws CommonException;
+
+    List<BookedVenueResponseDTO> getOneTimeBookings(String phoneNumber, int page, int size) throws CommonException;
+
+    List<Map<String, Object>> getRecurringBookings(String phoneNumber, int page, int size) throws CommonException;
 }

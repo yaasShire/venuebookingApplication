@@ -79,6 +79,7 @@ public class SecurityConfiguration {
         .requestMatchers(HttpMethod.GET, "/api/v1/{venueId}/revenue").hasAnyAuthority(PROVIDER_READ.getPermission(), ADMIN_READ.getPermission())
         .requestMatchers(HttpMethod.GET, "/api/v1/venue/{venueId}/occupancy-rate").hasAnyAuthority(PROVIDER_READ.getPermission(), ADMIN_READ.getPermission())
         .requestMatchers(HttpMethod.GET, "/api/v1/venue/{venueId}/bookings/total").hasAnyAuthority(PROVIDER_READ.getPermission(), ADMIN_READ.getPermission())
+        .requestMatchers(HttpMethod.GET, "/api/v1/venue/highest-revenue").hasAnyAuthority(PROVIDER_READ.getPermission(), ADMIN_READ.getPermission())
 
 //
         .requestMatchers(HttpMethod.POST, "/api/v1/cities/register").hasAnyAuthority(ADMIN_CREATE.getPermission())
@@ -109,6 +110,8 @@ public class SecurityConfiguration {
         .requestMatchers(HttpMethod.GET, "/api/v1/booking/getTotalIncomeOfTodayOrders/**").hasAnyAuthority(PROVIDER_READ.getPermission(), ADMIN_READ.getPermission())
         .requestMatchers(HttpMethod.GET, "/api/v1/booking/{venueId}/bookings/total").hasAnyAuthority(PROVIDER_READ.getPermission(), ADMIN_READ.getPermission())
         .requestMatchers(HttpMethod.GET, "/api/v1/booking/calculate").hasAnyAuthority(PROVIDER_READ.getPermission(), ADMIN_READ.getPermission())
+        .requestMatchers(HttpMethod.GET, "/api/v1/booking/recurring").hasAnyAuthority(USER_READ.getPermission(), ADMIN_READ.getPermission())
+        .requestMatchers(HttpMethod.GET, "/api/v1/booking/one-time").hasAnyAuthority(USER_READ.getPermission(), ADMIN_READ.getPermission())
 
 
 

@@ -42,18 +42,27 @@ public class TimeSlotServiceImpl implements TimeSlotService{
                     Venue venue = optionalVenue.get();
 
                     // Parse the venue's openTime and closeTime into LocalTime
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("h:mm a"); // Update the formatter
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("h:mm a");
                     LocalTime openTime = LocalTime.parse(venue.getOpenTime(), formatter);
                     LocalTime closeTime = LocalTime.parse(venue.getCloseTime(), formatter);
 
-                    // Parse the time slot's startTime and endTime from the request body
+// If close time is past midnight (e.g., 12:30 AM), set it to represent the start of the next day
+                    boolean crossesMidnight = closeTime.isBefore(openTime);
+                    if (crossesMidnight) {
+                        closeTime = LocalTime.MAX;  // Close time is set to the maximum time of the day (23:59:59.999999999)
+                    }
+
+// Parse the time slot's startTime and endTime from the request body
                     LocalTime startTime = LocalTime.parse(body.getStartTime(), formatter);
                     LocalTime endTime = LocalTime.parse(body.getEndTime(), formatter);
 
-                    // Check if the time slot is within the venue's operating hours
-                    if (startTime.isBefore(openTime) || endTime.isAfter(closeTime)) {
+// Ensure both startTime and endTime fall within the open and close times
+                    if ((startTime.isBefore(openTime) || endTime.isAfter(closeTime)) ||
+                            (endTime.isBefore(startTime))) {
                         throw new CommonException("Time Slot is outside of the venue's operating hours.");
                     }
+
+
 
                     // Check if there are any existing time slots that overlap with the new time slot
                     Optional<List<TimeSlot>> optionalTimeSlot = timeSlotRepository.findByMatchingOrOverlappingTimeSlotsForCourt(body.getStartTime(), body.getEndTime(), body.getCourtId());

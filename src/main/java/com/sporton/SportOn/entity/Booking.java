@@ -54,5 +54,9 @@ public class Booking {
     @Column(name = "payment_due_date")
     private LocalDate paymentDueDate;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_booking_id")
+    private Booking parentBooking;
+
 
 }

@@ -65,4 +65,8 @@ public interface AuthenticateService {
     CommonResponseModel getAllCustomers(String phoneNumber) throws AuthenticationException;
 
     OTPResponseModel customerSignUp(CustomerSignUpRequestModel body) throws AuthenticationException;
+
+    OTPResponseModel providerSignUp(ProviderSignUpRequestModal body) throws AuthenticationException;
+
+    ProviderSignUpResponseModal verifyOTPForProviderSignUp(OTP otp) throws AuthenticationException;
 }

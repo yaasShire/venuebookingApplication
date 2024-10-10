@@ -15,10 +15,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -51,11 +55,13 @@ public class BookingController {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
             String phoneNumber = jwtService.extractUsername(token);
-            return bookingService.getBookingsByUserId(phoneNumber, page, size);
+            return (List<BookedVenueResponseDTO>) bookingService.getBookingsByUserId(phoneNumber, page, size);
         }catch (Exception e){
             throw new CommonException(e.getMessage());
         }
     }
+
+
 
     @GetMapping("/getBookingByProviderId")
     public List<ProviderOrderResponseDTO> getBookingsByProviderId(
@@ -72,20 +78,38 @@ public class BookingController {
         }
     }
 
+//    @GetMapping("/getBookingByCustomerId")
+//    public Map<String, Object> getBookingByCustomerId(
+//            @RequestHeader("Authorization") String authorizationHeader,
+//            @RequestParam(name = "page", defaultValue = "0", required = false) int page,
+//            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
+//    ) throws CommonException {
+//        try {
+//            String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
+//            String phoneNumber = jwtService.extractUsername(token);
+//            // Directly return the result without casting
+//            return bookingService.getBookingsByUserId(phoneNumber, page, size);
+//        } catch (Exception e) {
+//            throw new CommonException(e.getMessage());
+//        }
+//    }
+
     @GetMapping("/getBookingByCustomerId")
-    public List<BookedVenueResponseDTO> getBookingByCustomerId(
+    public ResponseEntity<List<Object>> getBookingByCustomerId(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
-    ) throws CommonException {
-        try {
-            String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
-            String phoneNumber = jwtService.extractUsername(token);
-            return bookingService.getBookingsByUserId(phoneNumber, page, size);
-        }catch (Exception e){
-            throw new CommonException(e.getMessage());
-        }
+            @RequestParam(name = "size", defaultValue = "10", required = false) int size) throws CommonException {
+
+        // Extract phone number from JWT token
+        String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
+        String phoneNumber = jwtService.extractUsername(token);
+
+        // Fetch the bookings
+        List<Object> bookings = bookingService.getBookingByCustomerId(phoneNumber, page, size);
+
+        return ResponseEntity.ok(bookings);
     }
+
 
     @PutMapping("/update/{bookingId}")
     public CommonResponseModel updateBooking(@PathVariable Long bookingId, @RequestBody BookingRequest body) throws CommonException {
@@ -118,7 +142,7 @@ public class BookingController {
     public CommonResponseModel getNumberOfNewOrders(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -133,7 +157,7 @@ public class BookingController {
     public CommonResponseModel getPendingOrders(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -148,7 +172,7 @@ public class BookingController {
     public CommonResponseModel getExpiredOrders(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -163,7 +187,7 @@ public class BookingController {
     public CommonResponseModel getCompletedOrders(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -178,7 +202,7 @@ public class BookingController {
     public CommonResponseModel getConfirmedOrders(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -193,7 +217,7 @@ public class BookingController {
     public CommonResponseModel getCancelledOrders(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -208,7 +232,7 @@ public class BookingController {
     public CommonResponseModel getNumberOfTodayOrders(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -223,7 +247,7 @@ public class BookingController {
     public CommonResponseModel getNumberOfTodayMatches(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -238,7 +262,7 @@ public class BookingController {
     public CommonResponseModel getNumberOfPendingOrders(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -253,7 +277,7 @@ public class BookingController {
     public CommonResponseModel getMatchesByDate(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size,
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size,
             @RequestBody MatchesRequestModel body
             ) throws CommonException {
         try {
@@ -316,7 +340,7 @@ public class BookingController {
     public CommonResponseModel getTotalIncomeOfTodayOrders(
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestParam(name = "page", defaultValue = "0", required = false) int page,
-            @RequestParam(name = "size", defaultValue = "10", required = false) int size
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
     ) throws CommonException {
         try {
             String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
@@ -333,6 +357,7 @@ public class BookingController {
         return ResponseEntity.ok(booking);
     }
 
+
     @PostMapping("/calculate")
     public ResponseEntity<Double> calculateBookingPrice(@RequestBody BookingRequest body) throws CommonException {
         // Fetch the price of the time slot
@@ -342,7 +367,7 @@ public class BookingController {
         }
 
         TimeSlot timeSlot = optionalTimeSlot.get();
-        double timeSlotPrice = timeSlot.getPrice(); // Assume there's a price field in TimeSlot
+        double timeSlotPrice = timeSlot.getPrice();
 
         double totalPrice = 0.0;
 
@@ -353,13 +378,12 @@ public class BookingController {
                 break;
 
             case WEEKLY:
-                // Calculate the number of weeks between the match date and recurrence end date
-                long weeksBetween = ChronoUnit.WEEKS.between(body.getMatchDate(), body.getRecurrenceEndDate());
-                totalPrice = timeSlotPrice * (weeksBetween + 1); // +1 to include the current week
+                // Calculate the total price based on multiple selected days of the week
+                totalPrice = calculateWeeklyPrice(body, timeSlotPrice);
                 break;
 
             case MONTHLY:
-                // Calculate the number of occurrences of the specified day in each month until the end date
+                // Calculate the total price based on multiple selected days per month
                 totalPrice = calculateMonthlyPrice(body, timeSlotPrice);
                 break;
 
@@ -370,31 +394,90 @@ public class BookingController {
         return ResponseEntity.ok(totalPrice);
     }
 
-    // Helper method to calculate price for monthly bookings
-    private double calculateMonthlyPrice(BookingRequest body, double timeSlotPrice) {
+    // Helper method to calculate price for weekly bookings with multiple days
+    // Calculate the total price for weekly bookings
+    private double calculateWeeklyPrice(BookingRequest body, double timeSlotPrice) {
         double totalPrice = 0.0;
-
         LocalDate startDate = body.getMatchDate();
         LocalDate endDate = body.getRecurrenceEndDate();
 
-        // Iterate through each month between the start date and end date
+        // Loop over each day between startDate and endDate
         while (!startDate.isAfter(endDate)) {
-            // For each month, check how many occurrences of the selected day there are
-            LocalDate firstDayOfMonth = startDate.withDayOfMonth(1);
-            LocalDate lastDayOfMonth = startDate.withDayOfMonth(startDate.lengthOfMonth());
+            for (DayOfWeek selectedDay : body.getRecurrenceDays()) {
+                // Get the next occurrence of the selected day in the current week
+                LocalDate nextOccurrence = startDate.with(TemporalAdjusters.nextOrSame(selectedDay));
 
-            while (!firstDayOfMonth.isAfter(lastDayOfMonth)) {
-                if (firstDayOfMonth.getDayOfWeek().equals(body.getRecurrenceDay())) {
-                    totalPrice += timeSlotPrice;
+                // Ensure that the occurrence falls within the date range
+                if (!nextOccurrence.isAfter(endDate) && !nextOccurrence.isBefore(body.getMatchDate())) {
+                    totalPrice += timeSlotPrice;  // Add the price for each valid day
                 }
-                firstDayOfMonth = firstDayOfMonth.plusDays(1);
+            }
+            // Move to the next week
+            startDate = startDate.plusWeeks(1);
+        }
+
+        // Apply a 20% discount for weekly bookings
+//        totalPrice = totalPrice * 0.80;
+        return totalPrice;
+    }
+
+    // Calculate the total price for monthly bookings
+    private double calculateMonthlyPrice(BookingRequest body, double timeSlotPrice) {
+        double totalPrice = 0.0;
+        LocalDate startDate = body.getMatchDate();
+        LocalDate endDate = body.getRecurrenceEndDate();
+        List<DayOfWeek> recurrenceDays = body.getRecurrenceDays();
+
+        // Loop through each month between startDate and endDate
+        while (!startDate.isAfter(endDate)) {
+            YearMonth currentMonth = YearMonth.from(startDate);
+            LocalDate firstDayOfMonth = currentMonth.atDay(1);
+            LocalDate lastDayOfMonth = currentMonth.atEndOfMonth();
+
+            // Loop through each recurrence day in the month
+            for (DayOfWeek selectedDay : recurrenceDays) {
+                LocalDate currentDay = firstDayOfMonth.with(TemporalAdjusters.nextOrSame(selectedDay));
+
+                // Loop through all occurrences of the selected day within the current month
+                while (!currentDay.isAfter(lastDayOfMonth) && !currentDay.isAfter(endDate)) {
+                    if (!currentDay.isBefore(startDate)) {
+                        totalPrice += timeSlotPrice;  // Add the price for each valid occurrence
+                    }
+                    currentDay = currentDay.plusWeeks(1);  // Move to the next occurrence of the same day in the month
+                }
             }
 
             // Move to the next month
-            startDate = startDate.plusMonths(1);
+            startDate = startDate.plusMonths(1).withDayOfMonth(1);
         }
 
+        // Apply a 30% discount for monthly bookings
+        totalPrice *= 0.70;
+
         return totalPrice;
+    }
+
+
+    @GetMapping("/one-time")
+    public List<BookedVenueResponseDTO> getOneTimeBookings(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestParam(name = "page", defaultValue = "0", required = false) int page,
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
+    ) throws CommonException {
+        String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
+        String phoneNumber = jwtService.extractUsername(token);
+        return bookingService.getOneTimeBookings(phoneNumber, page, size);
+    }
+
+    @GetMapping("/recurring")
+    public List<Map<String, Object>> getRecurringBookings(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestParam(name = "page", defaultValue = "0", required = false) int page,
+            @RequestParam(name = "size", defaultValue = "10000", required = false) int size
+    ) throws CommonException {
+        String token = authorizationHeader.substring(7); // Remove "Bearer " prefix
+        String phoneNumber = jwtService.extractUsername(token);
+        return bookingService.getRecurringBookings(phoneNumber, page, size);
     }
 
 }

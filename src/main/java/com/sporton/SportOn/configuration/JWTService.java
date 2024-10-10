@@ -90,13 +90,18 @@ public class JWTService {
                 .getBody();
     }
 
-    @PostConstruct
-    public void init() {
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
-        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
-    }
+//    @PostConstruct
+//    public void init() {
+//        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+//        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+//    }
 
     private Key getSignInKey() {
-        return this.signingKey;
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        return Keys.hmacShaKeyFor(keyBytes);
     }
+
+//    private Key getSignInKey() {
+//        return this.signingKey;
+//    }
 }

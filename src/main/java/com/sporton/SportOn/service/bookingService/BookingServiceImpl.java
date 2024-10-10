@@ -9,6 +9,7 @@ import com.sporton.SportOn.model.CommonResponseModel;
 import com.sporton.SportOn.model.bookingModel.*;
 import com.sporton.SportOn.repository.*;
 import com.sporton.SportOn.service.notificationService.NotificationService;
+import com.sporton.SportOn.service.venueService.VenueRevenueResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -41,6 +42,9 @@ public class BookingServiceImpl implements BookingService{
     private  final VenueRepository venueRepository;
     private final CourtRepository courtRepository;
     private NotificationService notificationService;
+
+//
+
     @Override
     public CommonResponseModel bookCourt(BookingRequest body, String phoneNumber) throws CommonException {
         try {
@@ -66,7 +70,7 @@ public class BookingServiceImpl implements BookingService{
                 return handleOneTimeBooking(body, user, venue);
             } else if (body.getBookingType() == BookingType.WEEKLY || body.getBookingType() == BookingType.MONTHLY) {
                 // Handle recurring booking
-                handleRecurringBooking(body, user, venue);
+                handleMultipleRecurringBooking(body, user, venue);
                 return CommonResponseModel.builder()
                         .status(HttpStatus.CREATED)
                         .message("Recurring Booking Placed Successfully")
@@ -79,94 +83,37 @@ public class BookingServiceImpl implements BookingService{
         }
     }
 
-
-    private CommonResponseModel handleOneTimeBooking(BookingRequest body, AppUser user, Venue venue) throws CommonException {
-        // Validate the time slot
-        Optional<TimeSlot> optionalTimeSlot = timeSlotRepository.findById(body.getTimeSlotId());
-        if (optionalTimeSlot.isEmpty()) {
-            throw new CommonException("Time Slot With id " + body.getTimeSlotId() + " does not exist");
-        }
-
-        TimeSlot timeSlot = optionalTimeSlot.get();
-        List<LocalDate> bookedDates = timeSlot.getBookedDates();
-
-        if (!bookedDates.contains(body.getMatchDate())) {
-            // Save the booking date to the time slot
-            bookedDates.add(body.getMatchDate());
-            timeSlot.setBookedDates(bookedDates);
-            timeSlotRepository.save(timeSlot);
-
-            // Create the booking entry
-            Booking booking = Booking.builder()
-                    .courtId(body.getCourtId())
-                    .timeSlotId(body.getTimeSlotId())
-                    .matchDate(body.getMatchDate())
-                    .bookingDate(LocalDate.now())
-                    .totalPrice(body.getTotalPrice())
-                    .userId(user.getId())
-                    .providerId(venue.getProviderId())
-                    .status(BookingStatus.Pending)
-                    .venue(venue)
-                    .build();
-            bookingRepository.save(booking);
-
-            return CommonResponseModel.builder()
-                    .status(HttpStatus.CREATED)
-                    .message("Booking Placed Successfully")
-                    .build();
-        } else {
-            throw new CommonException("This Time Slot, The Court Is Not Available");
-        }
-    }
-
-//    handle recurrence booking
-
-    public void handleRecurringBooking(BookingRequest body, AppUser user, Venue venue) throws CommonException {
-        // Determine the start date for the recurrence (e.g., the current booking's match date)
+    // handle recurring booking
+    public void handleMultipleRecurringBooking(BookingRequest body, AppUser user, Venue venue) throws CommonException {
         LocalDate startDate = body.getMatchDate();
+        LocalDate endDate = body.getRecurrenceEndDate();
+        List<DayOfWeek> recurrenceDays = body.getRecurrenceDays();
+        log.info("Inside recurring booking");
+        log.info("Booking type: {}", body.getBookingType());
 
-        // Get the day of the week for recurrence
-        DayOfWeek recurrenceDay = body.getRecurrenceDay(); // e.g., MONDAY
+        // Generate the first booking as the parent booking for recurrence
+        Booking parentBooking = null;
+        LocalDate currentDate = startDate;
 
-        // Handle based on booking type
-        switch (body.getBookingType()) {
-            case WEEKLY:
-                // For weekly bookings, add bookings for every week until the end date
-                LocalDate nextDate = startDate;
-                while (!nextDate.isAfter(body.getRecurrenceEndDate())) {
-                    if (nextDate.getDayOfWeek().equals(recurrenceDay)) {
-                        saveBooking(body, user, venue, nextDate);
-                    }
-                    nextDate = nextDate.plusWeeks(1);
+        while (!currentDate.isAfter(endDate)) {
+            if (recurrenceDays.contains(currentDate.getDayOfWeek())) {
+                log.info("Booking for date: {}", currentDate);
+
+                // If it's the first booking, save it as the parent booking
+                if (parentBooking == null) {
+                    parentBooking = saveBooking(body, user, venue, currentDate, null); // null because it's the first instance
+                } else {
+                    saveBooking(body, user, venue, currentDate, parentBooking); // Link subsequent bookings to the parent
                 }
-                break;
-
-            case MONTHLY:
-                // For monthly bookings, book all occurrences of the specified day (e.g., all Mondays) in the month
-                LocalDate firstDayOfMonth = startDate.withDayOfMonth(1);
-                LocalDate lastDayOfMonth = startDate.withDayOfMonth(startDate.lengthOfMonth());
-
-                LocalDate currentDate = firstDayOfMonth;
-                while (!currentDate.isAfter(lastDayOfMonth)) {
-                    if (currentDate.getDayOfWeek().equals(recurrenceDay)) {
-                        saveBooking(body, user, venue, currentDate);
-                    }
-                    currentDate = currentDate.plusDays(1);
-                }
-                break;
-
-            case ONE_TIME:
-                // Handle one-time booking as usual
-                saveBooking(body, user, venue, startDate);
-                break;
-
-            default:
-                throw new CommonException("Invalid booking type");
+            }
+            // Move to the next day
+            currentDate = currentDate.plusDays(1);
         }
     }
 
-    private void saveBooking(BookingRequest body, AppUser user, Venue venue, LocalDate matchDate) throws CommonException {
-        // Check if the time slot is available for the specific date
+
+    // Saving booking with availability check
+    private Booking saveBooking(BookingRequest body, AppUser user, Venue venue, LocalDate matchDate, Booking parentBooking) throws CommonException {
         Optional<TimeSlot> optionalTimeSlot = timeSlotRepository.findById(body.getTimeSlotId());
         if (optionalTimeSlot.isEmpty()) {
             throw new CommonException("Time Slot with id " + body.getTimeSlotId() + " does not exist");
@@ -193,67 +140,110 @@ public class BookingServiceImpl implements BookingService{
                     .paymentDueDate(LocalDate.now().plusMonths(1))
                     .status(BookingStatus.Pending)
                     .venue(venue)
+                    .parentBooking(parentBooking)  // Link to the parent booking for recurrence
                     .build();
             bookingRepository.save(booking);
+            return booking;  // Return the saved booking
         } else {
-            throw new CommonException("This time slot is already booked on " + matchDate);
+            throw new CommonException("This time slot "+ timeSlot.getStartTime()+" - "+timeSlot.getEndTime()+" is already booked on " + matchDate+" choose another date");
         }
     }
+
+// handle one time booking
+    private CommonResponseModel handleOneTimeBooking(BookingRequest body, AppUser user, Venue venue) throws CommonException {
+        // Validate the time slot
+        Optional<TimeSlot> optionalTimeSlot = timeSlotRepository.findById(body.getTimeSlotId());
+        if (optionalTimeSlot.isEmpty()) {
+            throw new CommonException("Time Slot With id " + body.getTimeSlotId() + " does not exist");
+        }
+
+        TimeSlot timeSlot = optionalTimeSlot.get();
+        List<LocalDate> bookedDates = timeSlot.getBookedDates();
+
+        if (!bookedDates.contains(body.getMatchDate())) {
+            // Save the booking date to the time slot
+            bookedDates.add(body.getMatchDate());
+            timeSlot.setBookedDates(bookedDates);
+            timeSlotRepository.save(timeSlot);
+
+            // Create the booking entry
+            Booking booking = Booking.builder()
+                    .courtId(body.getCourtId())
+                    .timeSlotId(body.getTimeSlotId())
+                    .matchDate(body.getMatchDate())
+                    .bookingDate(LocalDate.now())
+                    .totalPrice(body.getTotalPrice())
+                    .userId(user.getId())
+                    .providerId(venue.getProviderId())
+                    .status(BookingStatus.Pending)
+                    .bookingType(BookingType.ONE_TIME)
+                    .venue(venue)
+                    .build();
+            bookingRepository.save(booking);
+
+            return CommonResponseModel.builder()
+                    .status(HttpStatus.CREATED)
+                    .message("Booking Placed Successfully")
+                    .build();
+        } else {
+            throw new CommonException("This Time Slot, The Court Is Not Available");
+        }
+    }
+
+//
 
 
 
     @Override
-    public List<BookedVenueResponseDTO> getBookingsByUserId(String phoneNumber, Integer page, Integer size) throws CommonException {
-        try {
-            Optional<AppUser> optionalAppUser = appUserRepository.findByPhoneNumber(phoneNumber);
-            if (optionalAppUser.isEmpty()) {
-                throw new CommonException("User with phone number " + phoneNumber + " does not exist");
-            }
-            Pageable pageable = PageRequest.of(page, size, Sort.by("bookingDate").descending());
-            Optional<List<Booking>> optionalBookings = bookingRepository.findByUserId(pageable, optionalAppUser.get().getId());
-            if (optionalBookings.isEmpty() || optionalBookings.get().isEmpty()) {
-                throw new CommonException("No bookings found for user");
-            }
-
-            List<Booking> bookings = optionalBookings.get();
-            List<BookedVenueResponseDTO> bookedVenueResponseDTOs = bookings.stream().map(booking -> {
-                Venue venue = booking.getVenue();
-                Court court = null;
-                try {
-                    court = courtRepository.findById(booking.getCourtId())
-                            .orElseThrow(() -> new CommonException("Court with id " + booking.getCourtId() + " does not exist"));
-                } catch (CommonException e) {
-                    throw new RuntimeException(e);
-                }
-                TimeSlot timeSlot;
-                try {
-                    timeSlot = timeSlotRepository.findById(booking.getTimeSlotId())
-                            .orElseThrow(() -> new CommonException("Time slot with id " + booking.getTimeSlotId() + " does not exist"));
-                } catch (CommonException e) {
-                    throw new RuntimeException(e);
-                }
-
-                String firstImage = venue.getImages() != null && !venue.getImages().isEmpty() ? venue.getImages().get(0) : null;
-                return BookedVenueResponseDTO.builder()
-                        .id(booking.getId())
-                        .venueId(venue.getId())
-                        .venueName(venue.getName())
-                        .bookingDate(booking.getBookingDate())
-                        .matchDate(booking.getMatchDate())
-                        .courtName(court.getName())
-                        .venuePhoneNumber(venue.getPhoneNumber())
-                        .startTime(timeSlot.getStartTime())
-                        .endTime(timeSlot.getEndTime())
-                        .totalPrice(booking.getTotalPrice())
-                        .status(BookingStatus.valueOf(booking.getStatus().name()))
-                        .image(firstImage)
-                        .build();
-            }).collect(Collectors.toList());
-
-            return bookedVenueResponseDTOs;
-        } catch (Exception e) {
-            throw new CommonException(e.getMessage());
+    public List<Object> getBookingByCustomerId(String phoneNumber, Integer page, Integer size) throws CommonException {
+        // Fetch the user by phone number
+        Optional<AppUser> userOptional = appUserRepository.findByPhoneNumber(phoneNumber);
+        if (!userOptional.isPresent()) {
+            throw new CommonException("User not found");
         }
+
+        // Prepare pagination
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Fetch bookings by user ID
+        Optional<List<Booking>> allBookingsPage = bookingRepository.findByUserId(pageable, userOptional.get().getId());
+        List<Booking> allBookings = allBookingsPage.get();
+
+        // Separate the bookings into one-time and recurring
+        List<Booking> oneTimeBookings = new ArrayList<>();
+        Map<Long, List<Booking>> groupedRecurringBookings = new HashMap<>();
+
+        for (Booking booking : allBookings) {
+            if (booking.getParentBooking() == null) {
+                // This is a one-time booking because it has no parent booking
+                oneTimeBookings.add(booking);
+            } else {
+                // This is a recurring booking because it has a parent booking
+                Long parentBookingId = booking.getParentBooking().getId();
+                groupedRecurringBookings
+                        .computeIfAbsent(parentBookingId, k -> new ArrayList<>())
+                        .add(booking);
+            }
+        }
+
+        // Prepare the response list
+        List<Object> responseList = new ArrayList<>();
+        responseList.add("oneTimeBookings");
+        responseList.add(oneTimeBookings);
+
+        // Group recurring bookings by parent booking ID
+        List<Map<String, Object>> recurringBookingsList = new ArrayList<>();
+        for (Map.Entry<Long, List<Booking>> entry : groupedRecurringBookings.entrySet()) {
+            Map<String, Object> recurringGroup = new HashMap<>();
+            recurringGroup.put("parentBookingId", entry.getKey());
+            recurringGroup.put("recurringBookings", entry.getValue());
+            recurringBookingsList.add(recurringGroup);
+        }
+
+        responseList.add("recurringBookings");
+        responseList.add(recurringBookingsList);
+
+        return responseList;
     }
 
     @Override
@@ -291,9 +281,12 @@ public class BookingServiceImpl implements BookingService{
         try {
             Optional<Booking> optionalBooking = bookingRepository.findById(bookingId);
             if (optionalBooking.isPresent()){
+                Optional<TimeSlot> optionalTimeSlot = timeSlotRepository.findById(optionalBooking.get().getTimeSlotId());
+                optionalTimeSlot.get().getBookedDates().remove(optionalBooking.get().getMatchDate());
 //                cancel logic happens here
                 optionalBooking.get().setStatus(BookingStatus.Canceled);
                 bookingRepository.save(optionalBooking.get());
+                timeSlotRepository.save(optionalTimeSlot.get());
                 return CommonResponseModel.builder()
                         .status(HttpStatus.OK)
                         .message("Booking Canceled Successfully")
@@ -421,25 +414,55 @@ public class BookingServiceImpl implements BookingService{
     }
 
     @Override
-    public List<Booking> getBookingByCustomerId(String phoneNumber, Integer page, Integer size) throws CommonException {
-        try {
-            Optional<AppUser> appUser = appUserRepository.findByPhoneNumber(phoneNumber);
-            if (appUser.isPresent()){
-                Pageable pageable = PageRequest.of(page, size, Sort.by("bookingDate").descending());
-                Optional<List<Booking>> optionalBookings = bookingRepository.findByUserId(pageable, appUser.get().getId());
-                if (optionalBookings.isPresent()){
-                    return optionalBookings.get();
-                }else {
-                    throw new CommonException("Noo Bookings Found");
-                }
-            }else {
-                throw new CommonException("User With Id " + appUser.get().getId() +" Does Not Exist");
-            }
-        }catch (Exception e){
-            throw new CommonException(e.getMessage());
+    public Map<String, Object> getBookingsByUserId(String phoneNumber, Integer page, Integer size) throws CommonException {
+        // Fetch the user by phone number
+        Optional<AppUser> userOptional = appUserRepository.findByPhoneNumber(phoneNumber);
+        if (!userOptional.isPresent()) {
+            throw new CommonException("User not found");
         }
-    }
 
+        // Prepare pagination
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Fetch bookings by user ID
+        Optional<List<Booking>> allBookingsPage = bookingRepository.findByUserId(pageable, userOptional.get().getId());
+        List<Booking> allBookings = allBookingsPage.get();
+
+        // Separate the bookings into one-time and recurring
+        List<Booking> oneTimeBookings = new ArrayList<>();
+        Map<Long, List<Booking>> groupedRecurringBookings = new HashMap<>();
+
+        for (Booking booking : allBookings) {
+            if (booking.getBookingType() == BookingType.ONE_TIME) {
+                oneTimeBookings.add(booking);
+            } else {
+                // Group recurring bookings by the parent booking ID
+                Long parentBookingId = booking.getParentBooking() != null
+                        ? booking.getParentBooking().getId()
+                        : booking.getId();
+                groupedRecurringBookings
+                        .computeIfAbsent(parentBookingId, k -> new ArrayList<>())
+                        .add(booking);
+            }
+        }
+
+        // Prepare the response map
+        Map<String, Object> response = new HashMap<>();
+        response.put("oneTimeBookings", oneTimeBookings);
+
+        // Group recurring bookings by parent booking ID
+        List<Map<String, Object>> recurringBookingsList = new ArrayList<>();
+        for (Map.Entry<Long, List<Booking>> entry : groupedRecurringBookings.entrySet()) {
+            Map<String, Object> recurringGroup = new HashMap<>();
+            recurringGroup.put("parentBookingId", entry.getKey());
+            recurringGroup.put("recurringBookings", entry.getValue());
+            recurringBookingsList.add(recurringGroup);
+        }
+
+        response.put("recurringBookings", recurringBookingsList);
+
+        return response;
+    }
     public CommonResponseModel getNumberOfNewOrders(String phoneNumber, Integer page, Integer size) throws CommonException {
         try {
             Optional<AppUser> optionalAppUser = appUserRepository.findByPhoneNumber(phoneNumber);
@@ -1344,7 +1367,7 @@ return CommonResponseModel.builder()
     @Override
     public CommonResponseModel getTotalRevenue(Long venueId, LocalDate startDate, LocalDate endDate) throws VenueException {
         try {
-            Double totalRevenue = bookingRepository.calculateTotalRevenueByVenueAndDate(venueId, startDate, endDate);
+            Double totalRevenue = bookingRepository.calculateTotalRevenueByVenueAndDateAndStatus(venueId, startDate, endDate, List.of(BookingStatus.Confirmed, BookingStatus.Completed));
             return CommonResponseModel.builder()
                     .status(HttpStatus.OK)
                     .message("Total Revenue For a Venue")
@@ -1362,6 +1385,169 @@ return CommonResponseModel.builder()
         bookingRepository.save(booking);
     }
 
+    @Override
+    public VenueRevenueResult getVenueWithHighestRevenue(String startDate, String endDate) throws CommonException {
+        try {
+            // Define the date formatter
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+            // Parse the start and end dates
+            LocalDate start = LocalDate.parse(startDate, formatter);
+            LocalDate end = LocalDate.parse(endDate, formatter);
+
+            // Fetch confirmed bookings filtered by date
+            List<Booking> confirmedBookings = bookingRepository.findByStatusInAndBookingDateBetween(
+                    List.of("Confirmed", "Completed"), start, end);
+
+            // Group by venue and sum their revenues
+            Map<Long, Double> revenueMap = confirmedBookings.stream()
+                    .collect(Collectors.groupingBy(
+                            Booking::getCourtId,  // Assuming getCourtId() returns the venue ID
+                            Collectors.summingDouble(Booking::getTotalPrice)));
+
+            // Find the entry with the maximum revenue
+            Map.Entry<Long, Double> highestRevenueEntry = revenueMap.entrySet().stream()
+                    .max(Map.Entry.comparingByValue())
+                    .orElseThrow(() -> new RuntimeException("No confirmed or completed bookings found"));
+
+            Long highestRevenueVenueId = highestRevenueEntry.getKey();
+            Double highestRevenueAmount = highestRevenueEntry.getValue();
+
+            // Fetch the venue details
+            Venue venue = venueRepository.findById(highestRevenueVenueId)
+                    .orElseThrow(() -> new RuntimeException("Venue not found"));
+
+            // Return the result as a custom DTO
+            return new VenueRevenueResult(venue, highestRevenueAmount);
+
+        } catch (Exception e) {
+            throw new CommonException(e.getMessage());
+        }
+    }
+
+    @Override
+    public List<BookedVenueResponseDTO> getOneTimeBookings(String phoneNumber, int page, int size) throws CommonException {
+        // Fetch the user by phone number
+        Optional<AppUser> userOptional = appUserRepository.findByPhoneNumber(phoneNumber);
+        if (!userOptional.isPresent()) {
+            throw new CommonException("User not found");
+        }
+
+        // Prepare pagination
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Fetch bookings by user ID and filter out one-time bookings
+        Optional<List<Booking>> allBookingsPage = bookingRepository.findByUserId(pageable, userOptional.get().getId());
+        List<Booking> allBookings = allBookingsPage.orElse(new ArrayList<>());
+
+        // Collect one-time bookings based on the bookingType field
+        List<Booking> oneTimeBookings = allBookings.stream()
+                .filter(booking -> booking.getBookingType() == BookingType.ONE_TIME)
+                .collect(Collectors.toList());
+
+        // Map to DTO
+        List<BookedVenueResponseDTO> bookingDTOs = new ArrayList<>();
+        for (Booking booking : oneTimeBookings) {
+            // Fetch court details using courtId
+            Court court = courtRepository.findById(booking.getCourtId())
+                    .orElseThrow(() -> new CommonException("Court not found"));
+
+            // Fetch time slot details using timeSlotId
+            TimeSlot timeSlot = timeSlotRepository.findById(booking.getTimeSlotId())
+                    .orElseThrow(() -> new CommonException("Time slot not found"));
+
+            // Map booking to DTO
+            BookedVenueResponseDTO dto = BookedVenueResponseDTO.builder()
+                    .id(booking.getId())
+                    .venueId(booking.getVenue().getId())
+                    .venueName(booking.getVenue().getName())
+                    .courtName(court.getName())  // Use fetched court name
+                    .bookingDate(booking.getBookingDate())
+                    .matchDate(booking.getMatchDate())
+                    .totalPrice(booking.getTotalPrice())
+                    .status(booking.getStatus())
+                    .venuePhoneNumber(booking.getVenue().getPhoneNumber())
+                    .startTime(timeSlot.getStartTime())  // Use fetched time slot start time
+                    .endTime(timeSlot.getEndTime())      // Use fetched time slot end time
+                    .image(booking.getVenue().getImages().isEmpty() ? null : booking.getVenue().getImages().get(0))  // Assuming first image
+                    .build();
+
+            bookingDTOs.add(dto);
+        }
+
+        return bookingDTOs;
+    }
+
+    @Override
+    public List<Map<String, Object>> getRecurringBookings(String phoneNumber, int page, int size) throws CommonException {
+        // Fetch the user by phone number
+        Optional<AppUser> userOptional = appUserRepository.findByPhoneNumber(phoneNumber);
+        if (!userOptional.isPresent()) {
+            throw new CommonException("User not found");
+        }
+
+        // Prepare pagination
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Fetch bookings by user ID and group recurring bookings
+        Optional<List<Booking>> allBookingsPage = bookingRepository.findByUserId(pageable, userOptional.get().getId());
+        List<Booking> allBookings = allBookingsPage.orElse(new ArrayList<>());
+
+        // Group recurring bookings by parent booking ID (excluding ONE_TIME bookings)
+        Map<Long, List<Booking>> groupedRecurringBookings = new HashMap<>();
+        for (Booking booking : allBookings) {
+            if (booking.getBookingType() != BookingType.ONE_TIME) {
+                Long parentBookingId = booking.getParentBooking() != null
+                        ? booking.getParentBooking().getId()
+                        : booking.getId();
+                groupedRecurringBookings
+                        .computeIfAbsent(parentBookingId, k -> new ArrayList<>())
+                        .add(booking);
+            }
+        }
+
+        // Prepare the response
+        List<Map<String, Object>> recurringBookingsList = new ArrayList<>();
+        for (Map.Entry<Long, List<Booking>> entry : groupedRecurringBookings.entrySet()) {
+            List<BookedVenueResponseDTO> bookingDTOList = new ArrayList<>();
+
+            for (Booking booking : entry.getValue()) {
+                // Fetch court details using courtId
+                Court court = courtRepository.findById(booking.getCourtId())
+                        .orElseThrow(() -> new CommonException("Court not found"));
+
+                // Fetch time slot details using timeSlotId
+                TimeSlot timeSlot = timeSlotRepository.findById(booking.getTimeSlotId())
+                        .orElseThrow(() -> new CommonException("Time slot not found"));
+
+                // Map the booking to DTO
+                BookedVenueResponseDTO dto = BookedVenueResponseDTO.builder()
+                        .id(booking.getId())
+                        .venueId(booking.getVenue().getId())
+                        .venueName(booking.getVenue().getName())
+                        .courtName(court.getName())  // Use fetched court name
+                        .bookingDate(booking.getBookingDate())
+                        .matchDate(booking.getMatchDate())
+                        .totalPrice(booking.getTotalPrice())
+                        .status(booking.getStatus())
+                        .venuePhoneNumber(booking.getVenue().getPhoneNumber())
+                        .startTime(timeSlot.getStartTime())  // Use fetched time slot start time
+                        .endTime(timeSlot.getEndTime())      // Use fetched time slot end time
+                        .image(booking.getVenue().getImages().get(0))  // Assuming first image
+                        .build();
+
+                bookingDTOList.add(dto);
+            }
+
+            // Create the recurring booking group
+            Map<String, Object> recurringGroup = new HashMap<>();
+            recurringGroup.put("parentBookingId", entry.getKey());
+            recurringGroup.put("recurringBookings", bookingDTOList);
+            recurringBookingsList.add(recurringGroup);
+        }
+
+        return recurringBookingsList;
+    }
 
 
     @Scheduled(fixedRate = 3600000) // Every hour (in milliseconds)

@@ -40,7 +40,7 @@ public class AppUser implements UserDetails {
     @JsonBackReference
     private Region region;
 
-    @OneToMany(mappedBy = "user")
+    @OneToMany(mappedBy = "user", cascade = CascadeType.REMOVE)
     @JsonBackReference
     private List<Token> tokens;
     @Enumerated(EnumType.STRING)
@@ -53,7 +53,7 @@ public class AppUser implements UserDetails {
 //    private List<Booking> bookings;
 
 @JsonBackReference
-    @OneToMany(mappedBy = "user", fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "user", fetch = FetchType.EAGER, cascade = CascadeType.REMOVE)
     private List<Subscription> subscriptions;
 //    @ManyToMany
 //    @JoinTable(

@@ -32,11 +32,22 @@ public class AuthenticationController {
         return authenticateService.customerSignUp(body);
     }
 
+    @PostMapping("/providerSignUp")
+    @Operation(summary = "Provider Sign Up", description = "This endpoint register provider.")
+    public OTPResponseModel providerSignUp(@RequestBody ProviderSignUpRequestModal body) throws AuthenticationException {
+        return authenticateService.providerSignUp(body);
+    }
+
+
     @PostMapping("/verifyOTP")
     public SignUpResponseModel verifyOTP(@RequestBody OTP otp) throws AuthenticationException {
         return authenticateService.verifyOTP(otp);
     }
 
+    @PostMapping("/verifyOTPForProviderSignUp")
+    public ProviderSignUpResponseModal verifyOTPForProviderSignUp(@RequestBody OTP otp) throws AuthenticationException {
+        return authenticateService.verifyOTPForProviderSignUp(otp);
+    }
     @PostMapping("/signIn")
     public SignInResponseModel singIn(@RequestBody SignInRequestModel body) throws AuthenticationException {
         return authenticateService.signIn(body);

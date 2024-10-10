@@ -3,6 +3,10 @@ package com.sporton.SportOn;
 import com.sporton.SportOn.entity.AppUser;
 import com.sporton.SportOn.entity.Role;
 import com.sporton.SportOn.repository.AppUserRepository;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.io.Encoders;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -19,6 +23,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.Key;
 
 @SpringBootApplication
 @EnableScheduling

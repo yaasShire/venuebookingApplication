@@ -49,6 +49,13 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                                                @Param("startDate") LocalDate startDate,
                                                @Param("endDate") LocalDate endDate);
 
+    @Query("SELECT SUM(b.totalPrice) FROM Booking b WHERE b.venue.id = :venueId AND b.bookingDate BETWEEN :startDate AND :endDate AND b.status IN :statuses")
+    Double calculateTotalRevenueByVenueAndDateAndStatus(@Param("venueId") Long venueId,
+                                                        @Param("startDate") LocalDate startDate,
+                                                        @Param("endDate") LocalDate endDate,
+                                                        @Param("statuses") List<BookingStatus> statuses);
+
+
     List<Booking> findByVenueId(Long venueId);
 
     @Query("SELECT b FROM Booking b WHERE b.paymentDueDate < :currentDate AND b.status = :status")
@@ -57,5 +64,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     @Query("SELECT b FROM Booking b WHERE b.paymentDueDate = :dueDate")
     List<Booking> findBookingsWithUpcomingPayments(@Param("dueDate") LocalDate dueDate);
+
+    List<Booking> findByStatusIn(List<String> statuses);
+
+    List<Booking> findByStatusInAndBookingDateBetween(List<String> statuses, LocalDate startDate, LocalDate endDate);
 
 }
